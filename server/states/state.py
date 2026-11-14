@@ -1,7 +1,12 @@
 import operator
 from typing import Annotated, NotRequired, TypedDict
 
-from server.schema.creative_requirement import CreativeRequirement
+from server.schema import (
+    CharacterProfile,
+    CreativeRequirement,
+    SceneProfile,
+    StoryOutline,
+)
 
 
 class ComicDramaState(TypedDict):
@@ -12,6 +17,12 @@ class ComicDramaState(TypedDict):
     raw_requirement: str
 
     requirement: NotRequired[CreativeRequirement]
+
+    story_outline: NotRequired[StoryOutline]
+
+    characters: NotRequired[list[CharacterProfile]]
+
+    scenes: NotRequired[list[SceneProfile]]
 
     # 当前所处的阶段
     # 例：首次输入 "submitted"；分镜待审 "quality_passed"；成片待审 "final_video_ready"；验收通过 "final_video_approved"

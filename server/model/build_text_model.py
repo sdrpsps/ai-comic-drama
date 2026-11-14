@@ -7,8 +7,13 @@ from .text_model import TextModel
 
 def build_text_model() -> TextModel:
     provider = os.getenv("TEXT_MODEL_PROVIDER", "fake").strip().lower()
+
     if provider == "fake":
-        return FakeTextModel()
+        planning_fault = os.getenv("FAKE_PLANNING_FAULT", "none").strip().lower()
+        if planning_fault not in {"none", "characters", "scenes"}:
+            raise ValueError(f"不支持的 FAKE_PLANNING_FAULT：{planning_fault}")
+        return FakeTextModel(planning_fault=planning_fault)
+
     if provider in "openai":
         api_key = os.getenv("OPENAI_API_KEY", "").strip()
         model = os.getenv("OPENAI_MODEL", "").strip()
