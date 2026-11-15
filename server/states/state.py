@@ -6,6 +6,7 @@ from server.schema import (
     CreativeRequirement,
     SceneProfile,
     StoryBoard,
+    StoryboardQualityReport,
     StoryboardValidation,
     StoryOutline,
 )
@@ -41,5 +42,8 @@ class ComicDramaState(TypedDict):
     # 分镜列表
     storyboard: NotRequired[list[StoryBoard]]
 
-    # 分镜验证
+    # 硬规则评审分镜的结果
     storyboard_validation: NotRequired[StoryboardValidation]
+
+    # 模型评审分镜后的结果
+    quality_report: NotRequired[StoryboardQualityReport]

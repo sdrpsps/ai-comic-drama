@@ -3,8 +3,10 @@ from typing import Any
 from server.schema import (
     CharacterProfile,
     CreativeRequirement,
+    QualityIssue,
     SceneProfile,
     StoryBoard,
+    StoryboardQualityReport,
     StoryOutline,
 )
 
@@ -18,10 +20,12 @@ class FakeTextModel:
         *,
         planning_fault: str = "none",
         storyboard_fault: str = "none",
+        quality_fault: str = "none",
     ) -> None:
         self._response = response
         self._planning_fault = planning_fault
         self._storyboard_fault = storyboard_fault
+        self._quality_fault = quality_fault
 
     def analyze_requirement(self, raw_requirement: str) -> CreativeRequirement:
         response = self._response or {
@@ -93,66 +97,176 @@ class FakeTextModel:
         ]
 
     def generate_storyboard(
-            self,
-            requirement: CreativeRequirement,
-            outline: StoryOutline,
-            characters: list[CharacterProfile],
-            scenes: list[SceneProfile],
-        ) -> list[StoryBoard]:
-            """确定性分镜样本；数量与总时长必须服从结构化需求。"""
-            moments = [
-                ("小林看到屏幕旁出现阿沐", "小林惊讶地抬头", "阿沐站到桌边"),
-                ("阿沐解释零点前必须回去", "阿沐指向墙上的钟", "小林决定帮忙"),
-                ("两人寻找漫画的最后一页", "两人在桌上翻找", "发现空白纸张"),
-                ("小林画出能让故事继续的画面", "小林握笔停顿", "画纸上出现回家的路"),
-                ("阿沐回到漫画并约定重逢", "阿沐走向发光书页", "书页合上留下约定"),
-            ]
-            
-            # 把成片总时长拆成每镜整数秒，保证加起来刚好等于 requirement.duration_seconds
-            # divmod(a, b) 一次算出商和余数
-            base_duration, remainder = divmod(
-                requirement.duration_seconds, requirement.shot_count
+        self,
+        requirement: CreativeRequirement,
+        outline: StoryOutline,
+        characters: list[CharacterProfile],
+        scenes: list[SceneProfile],
+    ) -> list[StoryBoard]:
+        """确定性分镜样本；数量与总时长必须服从结构化需求。"""
+        moments = [
+            ("小林看到屏幕旁出现阿沐", "小林惊讶地抬头", "阿沐站到桌边"),
+            ("阿沐解释零点前必须回去", "阿沐指向墙上的钟", "小林决定帮忙"),
+            ("两人寻找漫画的最后一页", "两人在桌上翻找", "发现空白纸张"),
+            ("小林画出能让故事继续的画面", "小林握笔停顿", "画纸上出现回家的路"),
+            ("阿沐回到漫画并约定重逢", "阿沐走向发光书页", "书页合上留下约定"),
+        ]
+
+        # 把成片总时长拆成每镜整数秒，保证加起来刚好等于 requirement.duration_seconds
+        # divmod(a, b) 一次算出商和余数
+        base_duration, remainder = divmod(
+            requirement.duration_seconds, requirement.shot_count
+        )
+
+        storyboard = [
+            StoryBoard(
+                shot_id=f"shot_{index:02d}",
+                order=index,
+                # 默认 45 秒 / 5 镜：base_duration=9，remainder=0，每镜都是 9 秒。
+                # 如果是 47 秒 / 5 镜：base_duration=9，remainder=2。后面赋值用了：
+                # duration_seconds=base_duration + (index <= remainder)
+                duration_seconds=base_duration + (index <= remainder),
+                scene_id="scene_office",
+                character_ids=["char_xiaolin", "char_amu"],
+                action=action,
+                composition="竖屏中景，人物与办公桌保持相对位置",
+                dialogue="",
+                camera_motion="缓慢推近",
+                start_frame_prompt=f"暖色二维漫画，深夜办公室，{start}",
+                end_frame_prompt=f"暖色二维漫画，深夜办公室，{end}",
+                video_prompt=(
+                    f"{base_duration + (index <= remainder)} 秒镜头："
+                    f"{action}；镜头缓慢推近。"
+                ),
+            )
+            for index, (action, start, end) in enumerate(moments, start=1)
+        ]
+
+        # 根据环境变量的设置，故意破坏
+        if self._storyboard_fault == "duplicate_id":
+            # 第 2 镜的 shot_id 改成和第 1 镜一样
+            # 校验会触发：shot_id 重复
+            storyboard[1] = storyboard[1].model_copy(
+                update={"shot_id": storyboard[0].shot_id}
+            )
+        elif self._storyboard_fault == "unknown_character":
+            # 第 3 镜角色改成 char_missing
+            # 校验的时候应该触发：引用了不存在的角色
+            storyboard[2] = storyboard[2].model_copy(
+                update={"character_ids": ["char_missing"]}
+            )
+        elif self._storyboard_fault == "duration_mismatch":
+            # 第 4 镜（不够 4 镜就改最后一镜）时长 +3
+            # 校验的时候会触发：总时长对不上 duration_seconds
+            fault_index = min(3, len(storyboard) - 1)
+            storyboard[fault_index] = storyboard[fault_index].model_copy(
+                update={
+                    "duration_seconds": storyboard[fault_index].duration_seconds + 3
+                }
             )
 
-            storyboard = [
-                StoryBoard(
-                    shot_id=f"shot_{index:02d}",
-                    order=index,
-                    # 默认 45 秒 / 5 镜：base_duration=9，remainder=0，每镜都是 9 秒。
-                    # 如果是 47 秒 / 5 镜：base_duration=9，remainder=2。后面赋值用了：
-                    # duration_seconds=base_duration + (index <= remainder)
-                    duration_seconds=base_duration + (index <= remainder),
-                    scene_id="scene_office",
-                    character_ids=["char_xiaolin", "char_amu"],
-                    action=action,
-                    composition="竖屏中景，人物与办公桌保持相对位置",
-                    dialogue="",
-                    camera_motion="缓慢推近",
-                    start_frame_prompt=f"暖色二维漫画，深夜办公室，{start}",
-                    end_frame_prompt=f"暖色二维漫画，深夜办公室，{end}",
-                    video_prompt=(
-                        f"{base_duration + (index <= remainder)} 秒镜头："
-                        f"{action}；镜头缓慢推近。"
-                    ),
-                )
-                for index, (action, start, end) in enumerate(moments, start=1)
-            ]
+        return storyboard
 
-            # 根据环境变量的设置，故意破坏
-            if self._storyboard_fault == "duplicate_id":
-                # 第 2 镜的 shot_id 改成和第 1 镜一样
-                # 校验会触发：shot_id 重复
-                storyboard[1] = storyboard[1].model_copy(update={"shot_id": storyboard[0].shot_id})
-            elif self._storyboard_fault == "unknown_character":
-                # 第 3 镜角色改成 char_missing
-                # 校验的时候应该触发：引用了不存在的角色
-                storyboard[2] = storyboard[2].model_copy(update={"character_ids": ["char_missing"]})
-            elif self._storyboard_fault == "duration_mismatch":
-                # 第 4 镜（不够 4 镜就改最后一镜）时长 +3
-                # 校验的时候会触发：总时长对不上 duration_seconds
-                fault_index = min(3, len(storyboard) - 1)
-                storyboard[fault_index] = storyboard[fault_index].model_copy(
-                    update={"duration_seconds": storyboard[fault_index].duration_seconds + 3}
-                )
-
-            return storyboard
+    def evaluate_storyboard_quality(
+        self,
+        requirement: CreativeRequirement,
+        outline: StoryOutline,
+        characters: list[CharacterProfile],
+        scenes: list[SceneProfile],
+        storyboard: list[StoryBoard],
+        previous_report: StoryboardQualityReport | None = None,
+    ) -> StoryboardQualityReport:
+        # FAKE_QUALITY_FAULT=invalid_report 时进入。
+        # 返回一份「长得像报告、实际校验不过」的裸 dict：
+        # is_passed=True 却带 error，构造 StoryboardQualityReport 会失败。
+        # 用来模拟模型输出脏数据。
+        if self._quality_fault == "invalid_report":
+            return StoryboardQualityReport(
+                is_passed=True,
+                summary="错误报告",
+                issues=[
+                    QualityIssue(
+                        code="plot_gap",
+                        severity="error",
+                        shot_id="shot_03",
+                        description="转场跳跃",
+                        suggestion="补充过渡",
+                    )
+                ],
+                affected_shot_ids=["shot_03"],
+            )
+        # FAKE_QUALITY_FAULT=plot_gap 时进入。
+        # 返回合法但不通过的报告：第三镜情节断裂（plot_gap）。
+        if self._quality_fault == "plot_gap":
+            return StoryboardQualityReport(
+                is_passed=False,
+                summary="第三镜头与故事设定衔接不足",
+                issues=[
+                    QualityIssue(
+                        code="plot_gap",
+                        severity="error",
+                        shot_id="shot_03",
+                        description="第三镜头缺少寻找过程",
+                        suggestion="交代寻找与发现的因果",
+                    )
+                ],
+                affected_shot_ids=["shot_03"],
+            )
+        # FAKE_QUALITY_FAULT=character_inconsistent 时进入。
+        # 返回合法但不通过的报告：第三镜阿沐服装和角色设定不一致。
+        if self._quality_fault == "character_inconsistent":
+            return StoryboardQualityReport(
+                is_passed=False,
+                summary="第三镜头角色外观与设定不一致",
+                issues=[
+                    QualityIssue(
+                        code="character_inconsistent",
+                        severity="error",
+                        shot_id="shot_03",
+                        description="阿沐在第三镜头换成了与设定不符的服装",
+                        suggestion="改回角色设定中的暖黄色外套与白色裙子",
+                    )
+                ],
+                affected_shot_ids=["shot_03"],
+            )
+        # FAKE_QUALITY_FAULT=visual_unclear 时进入。
+        # 返回合法但不通过的报告：第三镜首帧写不清人物和办公桌的空间关系。
+        if self._quality_fault == "visual_unclear":
+            return StoryboardQualityReport(
+                is_passed=False,
+                summary="第三镜头首帧无法明确生成",
+                issues=[
+                    QualityIssue(
+                        code="visual_unclear",
+                        severity="error",
+                        shot_id="shot_03",
+                        description="首帧没有写出人物与办公桌的空间关系",
+                        suggestion="在首帧补上人物位置和关键道具",
+                    )
+                ],
+                affected_shot_ids=["shot_03"],
+            )
+        # FAKE_QUALITY_FAULT=motion_conflict 时进入。
+        # 返回合法但不通过的报告：第三镜固定机位和跟拍指令互相矛盾。
+        if self._quality_fault == "motion_conflict":
+            return StoryboardQualityReport(
+                is_passed=False,
+                summary="第三镜头的动作与摄影机运动矛盾",
+                issues=[
+                    QualityIssue(
+                        code="motion_conflict",
+                        severity="error",
+                        shot_id="shot_03",
+                        description="camera_motion 要求固定机位，video_prompt 却要求摄影机跟拍",
+                        suggestion="统一为固定机位，把人物走动只写进动作",
+                    )
+                ],
+                affected_shot_ids=["shot_03"],
+            )
+        # 走到这里：FAKE_QUALITY_FAULT=none，返回合法且通过的空问题报告。
+        return StoryboardQualityReport(
+            is_passed=True,
+            summary=f"{len(storyboard)} 个镜头衔接清楚，可进入人工审核",
+            issues=[],
+            affected_shot_ids=[],
+        )

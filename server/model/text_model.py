@@ -5,6 +5,7 @@ from server.schema import (
     CreativeRequirement,
     SceneProfile,
     StoryBoard,
+    StoryboardQualityReport,
     StoryOutline,
 )
 
@@ -41,4 +42,16 @@ class TextModel(Protocol):
         scenes: list[SceneProfile],
     ) -> list[StoryBoard]:
         """只引用已登记角色与场景，返回整版分镜。"""
+        ...
+
+    def evaluate_storyboard_quality(
+        self,
+        requirement: CreativeRequirement,
+        outline: StoryOutline,
+        characters: list[CharacterProfile],
+        scenes: list[SceneProfile],
+        storyboard: list[StoryBoard],
+        previous_report: StoryboardQualityReport | None = None,
+    ) -> StoryboardQualityReport:
+        """评价当前分镜，不修改分镜。"""
         ...
