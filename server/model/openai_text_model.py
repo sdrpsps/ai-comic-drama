@@ -3,13 +3,21 @@ from typing import Any
 
 from openai import OpenAI
 
-from server.prompts import CHARACTER_PROMPT, SCENE_PROMPT, STORY_PROMPT, SYSTEM_PROMPT
+from server.prompts import (
+    CHARACTER_PROMPT,
+    SCENE_PROMPT,
+    STORY_PROMPT,
+    STORYBOARD_PROMPT,
+    SYSTEM_PROMPT,
+)
 from server.schema import (
     CharacterList,
     CharacterProfile,
     CreativeRequirement,
     SceneList,
     SceneProfile,
+    StoryBoard,
+    StoryBoardList,
     StoryOutline,
 )
 
@@ -81,3 +89,28 @@ class OpenAITextModel:
             schema=SceneList,
         )
         return result.scenes
+
+    def generate_storyboard(
+        self,
+        requirement: CreativeRequirement,
+        outline: StoryOutline,
+        characters: list[CharacterProfile],
+        scenes: list[SceneProfile],
+    ) -> list[StoryBoard]:
+        # 【重要】把目标数量、总时长、可用 ID 连同完整设定传给模型。
+        # 结构化解析只校验单个字段；跨镜头规则仍由 Python 校验节点负责。
+        result = self._parse(
+            system=STORYBOARD_PROMPT,
+            payload={
+                "requirement": requirement.model_dump(mode="json"),
+                "story_outline": outline.model_dump(mode="json"),
+                "characters": [item.model_dump(mode="json") for item in characters],
+                "scenes": [item.model_dump(mode="json") for item in scenes],
+                "target_shot_count": requirement.shot_count,
+                "target_duration_seconds": requirement.duration_seconds,
+                "allowed_character_ids": [item.character_id for item in characters],
+                "allowed_scene_ids": [item.scene_id for item in scenes],
+            },
+            schema=StoryBoardList,
+        )
+        return result.storyboard_list

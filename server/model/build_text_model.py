@@ -10,9 +10,22 @@ def build_text_model() -> TextModel:
 
     if provider == "fake":
         planning_fault = os.getenv("FAKE_PLANNING_FAULT", "none").strip().lower()
+        storyboard_fault = os.getenv("FAKE_STORYBOARD_FAULT", "none").strip().lower()
+
         if planning_fault not in {"none", "characters", "scenes"}:
             raise ValueError(f"不支持的 FAKE_PLANNING_FAULT：{planning_fault}")
-        return FakeTextModel(planning_fault=planning_fault)
+
+        if storyboard_fault not in {
+            "none",
+            "duplicate_id",
+            "unknown_character",
+            "duration_mismatch",
+        }:
+            raise ValueError(f"不支持的 FAKE_STORYBOARD_FAULT：{storyboard_fault}")
+
+        return FakeTextModel(
+            planning_fault=planning_fault, storyboard_fault=storyboard_fault
+        )
 
     if provider in "openai":
         api_key = os.getenv("OPENAI_API_KEY", "").strip()
