@@ -1,63 +1,29 @@
-from typing import Literal
-
 from langgraph.graph import END, START, StateGraph
 
 from server.model import TextModel, build_text_model
-from server.nodes import (
-    finish_planning,
-    make_analyze_requirement,
-    make_generate_characters,
-    make_generate_scenes,
-    make_generate_story_outline,
-    make_generate_storyboard,
-    receive_idea,
-    storyboard_invalid,
-    storyboard_ready,
-    validate_storyboard,
-)
 from server.states import ComicDramaState
-
-
-def route_storyboard(
-    state: ComicDramaState,
-) -> Literal["storyboard_ready", "storyboard_invalid"]:
-    if "storyboard_validation" not in state:
-        raise ValueError("缺少分镜验证结果，不能路由")
-
-    return (
-        "storyboard_ready"
-        if state["storyboard_validation"].is_valid
-        else "storyboard_invalid"
-    )
+from server.workflows.story_planning import build_story_planning_graph
 
 
 def build_graph(text_model: TextModel):
-    # StateGraph 只描述业务节点、连边以及共享 State。
+    planning_graph = build_story_planning_graph(text_model)
+
+    def story_planning(state: ComicDramaState) -> dict[str, object]:
+        child_result = planning_graph.invoke(state)
+        # 子图返回完整事件历史；父图 reducer 只追加本轮新事件。
+        return {
+            **child_result,
+            "events": child_result["events"][len(state["events"]) :],
+        }
+
     builder = StateGraph(ComicDramaState)
-    builder.add_node("receive_idea", receive_idea)
-    builder.add_node("analyze_requirement", make_analyze_requirement(text_model))
-    builder.add_node("generate_story_outline", make_generate_story_outline(text_model))
-    builder.add_node("generate_characters", make_generate_characters(text_model))
-    builder.add_node("generate_scenes", make_generate_scenes(text_model))
-    builder.add_node("finish_planning", finish_planning)
-    builder.add_node("generate_storyboard", make_generate_storyboard(text_model))
-    builder.add_node("validate_storyboard", validate_storyboard)
-    builder.add_node("storyboard_ready", storyboard_ready)
-    builder.add_node("storyboard_invalid", storyboard_invalid)
 
-    builder.add_edge(START, "receive_idea")
-    builder.add_edge("receive_idea", "analyze_requirement")
-    builder.add_edge("analyze_requirement", "generate_story_outline")
+    # 添加节点
+    builder.add_node("story_planning", story_planning)
 
-    builder.add_edge("generate_story_outline", "generate_characters")
-    builder.add_edge("generate_story_outline", "generate_scenes")
-
-    builder.add_edge(["generate_characters", "generate_scenes"], "finish_planning")
-    builder.add_edge("finish_planning", "generate_storyboard")
-    builder.add_edge("generate_storyboard", "validate_storyboard")
-    builder.add_conditional_edges("validate_storyboard", route_storyboard)
-    builder.add_edge("storyboard_ready", END)
-    builder.add_edge("storyboard_invalid", END)
+    # 连边
+    builder.add_edge(START, "story_planning")
+    builder.add_edge("story_planning", END)
 
     return builder.compile()
 
