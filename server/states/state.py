@@ -47,3 +47,6 @@ class ComicDramaState(TypedDict):
 
     # 模型评审分镜后的结果
     quality_report: NotRequired[StoryboardQualityReport]
+
+    # 修订前的质量报告，用于复评
+    previous_quality_report: NotRequired[StoryboardQualityReport]
