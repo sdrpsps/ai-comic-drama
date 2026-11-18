@@ -14,6 +14,7 @@ def build_text_model() -> TextModel:
         # 读取环境变量里面的 FAKE_STORYBOARD_FAULT
         storyboard_fault = os.getenv("FAKE_STORYBOARD_FAULT", "none").strip().lower()
         quality_fault = os.getenv("FAKE_QUALITY_FAULT", "none").strip().lower()
+        revision_scenario = os.getenv("FAKE_REVISION_SCENARIO", "none").strip().lower()
 
         if planning_fault not in {"none", "characters", "scenes"}:
             raise ValueError(f"不支持的 FAKE_PLANNING_FAULT：{planning_fault}")
@@ -36,10 +37,21 @@ def build_text_model() -> TextModel:
         }:
             raise ValueError(f"不支持的 FAKE_QUALITY_FAULT：{quality_fault}")
 
+        if revision_scenario not in {
+            "none",
+            "second_pass",
+            "always_fail",
+            "unchanged",
+            "hard_regression",
+            "repeat_version",
+        }:
+            raise ValueError(f"不支持的 FAKE_REVISION_SCENARIO：{revision_scenario}")
+
         return FakeTextModel(
             planning_fault=planning_fault,
             storyboard_fault=storyboard_fault,
             quality_fault=quality_fault,
+            revision_scenario=revision_scenario,
         )
 
     if provider in "openai":

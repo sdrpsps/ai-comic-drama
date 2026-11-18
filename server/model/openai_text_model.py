@@ -8,6 +8,7 @@ from openai import OpenAI
 from server.prompts import (
     CHARACTER_PROMPT,
     QUALITY_PROMPT,
+    REVISION_PROMPT,
     SCENE_PROMPT,
     STORY_PROMPT,
     STORYBOARD_PROMPT,
@@ -163,6 +164,129 @@ class OpenAITextModel:
             schema=ModelQualityReport,
         )
         return normalize_quality_report(report, known_ids)
+
+    def revise_storyboard(
+        self,
+        requirement: CreativeRequirement,
+        outline: StoryOutline,
+        characters: list[CharacterProfile],
+        scenes: list[SceneProfile],
+        storyboard: list[StoryBoard],
+        report: StoryboardQualityReport,
+        revision_count: int = 0,
+    ) -> list[StoryBoard]:
+        """返回完整新版本，节点负责最终校验。"""
+
+        # 列表推导式
+        # {
+        #     "shot_01": 第 1 个分镜对象,
+        #     "shot_02": 第 2 个分镜对象,
+        #     "shot_03": 第 3 个分镜对象,
+        #     ...
+        # }
+        # 将分镜原稿（还没修订的）先按照这样的格式存一份
+        old_by_id = {shot.shot_id: shot for shot in storyboard}
+
+        # old_by_id 这是一个字典
+        # 字典的 key 不能重复
+        if len(old_by_id) != len(storyboard):
+            raise ValueError("真实局部修订要求原稿 shot_id 唯一，先处理硬规则错误")
+
+        # report.affected_shot_ids -> ['shot_01', 'shot_02']
+        # ['shot_01', 'shot_02'] -> {'shot_01', 'shot_02'}
+        # targets 就是存储需要处理的分镜的 id（只不过当前是集合的形式）
+        targets = set(report.affected_shot_ids) or set(old_by_id)
+
+        # 集合的差级运算：targets 有、old_by_id 没有的留下
+        # 报告写了 shot_99 而分镜只有 shot_01～shot_05 时，unknown 就是 {"shot_99"}
+        unknown = targets - set(old_by_id)
+
+        if unknown:
+            raise ValueError(f"修订目标引用未知分镜：{sorted(unknown)}")
+
+        # 列表推导式
+        # 拿到需要处理的分镜 id
+        allowed_ids = [shot.shot_id for shot in storyboard if shot.shot_id in targets]
+
+        # 负责真实的模型交互
+        # storyboard_list 对应的是一个列表，列表里面只有修订的分镜对象
+        # 大致长这样：
+        # StoryBoardList(
+        #     storyboard_list=[
+        #         StoryBoard(
+        #             shot_id="shot_03",
+        #             order=3,
+        #             duration_seconds=9,
+        #             scene_id="scene_office",
+        #             character_ids=["char_xiaolin", "char_amu"],
+        #             action="两人在桌上翻找遗落的最后一页，翻开空白纸张",
+        #             composition="竖屏中景，人物与办公桌保持相对位置",
+        #             dialogue="",
+        #             camera_motion="缓慢推近",
+        #             start_frame_prompt="暖色二维漫画，深夜办公室，两人在桌上翻找",
+        #             end_frame_prompt="暖色二维漫画，深夜办公室，发现空白纸张",
+        #             video_prompt="9 秒镜头：两人寻找漫画的最后一页；镜头缓慢推近。",
+        #         )
+        #     ]
+        # )
+        result = self._parse(
+            system=REVISION_PROMPT
+            + "\n本次必须且只能返回以下镜头 ID 对应的分镜："
+            + json.dumps(allowed_ids, ensure_ascii=False),
+            payload={
+                "requirement": requirement.model_dump(mode="json"),
+                "story_outline": outline.model_dump(mode="json"),
+                "characters": [item.model_dump(mode="json") for item in characters],
+                "scenes": [item.model_dump(mode="json") for item in scenes],
+                "storyboard": [item.model_dump(mode="json") for item in storyboard],
+                "quality_report": report.model_dump(mode="json"),
+                "allowed_shot_ids": allowed_ids,
+            },
+            schema=StoryBoardList,
+        )
+
+        # 把 result.storyboard_list 里每一项再校验成 StoryBoard
+        # revised -> [StoryBoard, StoryBoard...]
+        revised = [StoryBoard.model_validate(shot) for shot in result.storyboard_list]
+
+        # returned_ids -> ['shot_01', 'shot_02', ...]
+        returned_ids = [shot.shot_id for shot in revised]
+
+        if len(set(returned_ids)) != len(returned_ids) or set(returned_ids) != targets:
+            raise ValueError("修订输出必须恰好覆盖允许的镜头 ID，不能遗漏、重复或越界")
+
+        # revised_by_id 是一个字典
+        # revised_by_id 这个字典里面只包含修订分镜头
+        # {
+        #     "shot_01": 第 1 个分镜对象,
+        #     "shot_02": 第 2 个分镜对象,
+        #     "shot_03": 第 3 个分镜对象,
+        #     ...
+        # }
+        revised_by_id = {shot.shot_id: shot for shot in revised}
+
+        # revised -> [StoryBoard, StoryBoard...]
+        # old_by_id
+        # {
+        #     "shot_01": 第 1 个分镜对象,
+        #     "shot_02": 第 2 个分镜对象,
+        #     "shot_03": 第 3 个分镜对象,
+        #     ...
+        # }
+        # 用 shot_id 到 old_by_id 找到原稿对应镜头，再比较两边的 order。
+        # any(...) 只要发现一个不相等，就返回 True，于是抛出下面的 ValueError，拒绝这次修订。
+        if any(shot.order != old_by_id[shot.shot_id].order for shot in revised):
+            raise ValueError("修订不得改变目标镜头 order")
+
+        if sum(shot.duration_seconds for shot in revised) != sum(
+            old_by_id[shot_id].duration_seconds for shot_id in targets
+        ):
+            raise ValueError("修订不得改变目标镜头时长合计")
+
+        # 这里是最终向外部返回的修订结果
+        # 注意点：向外部返回的时候，返回的是完整的5个分镜头
+        # 其中需要改的就替换掉了
+        return [revised_by_id.get(shot.shot_id, shot) for shot in storyboard]
 
 
 def normalize_quality_report(

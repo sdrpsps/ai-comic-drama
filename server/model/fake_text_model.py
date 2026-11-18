@@ -10,6 +10,23 @@ from server.schema import (
     StoryOutline,
 )
 
+_ACTION_PREFIX = "已按质量报告修订："
+_FRAME_SUFFIX = "，已按反馈强化"
+
+
+def _undo_fake_revision(shot: StoryBoard) -> StoryBoard:
+    action = shot.action
+    action = action.removeprefix(_ACTION_PREFIX)
+    start = shot.start_frame_prompt.removesuffix(_FRAME_SUFFIX)
+    end = shot.end_frame_prompt.removesuffix(_FRAME_SUFFIX)
+    return shot.model_copy(
+        update={
+            "action": action,
+            "start_frame_prompt": start,
+            "end_frame_prompt": end,
+        }
+    )
+
 
 class FakeTextModel:
     """本地开发使用的确定性替身，不发起任何网络请求。"""
@@ -21,11 +38,13 @@ class FakeTextModel:
         planning_fault: str = "none",
         storyboard_fault: str = "none",
         quality_fault: str = "none",
+        revision_scenario: str = "none",
     ) -> None:
         self._response = response
         self._planning_fault = planning_fault
         self._storyboard_fault = storyboard_fault
         self._quality_fault = quality_fault
+        self._revision_scenario = revision_scenario
 
     def analyze_requirement(self, raw_requirement: str) -> CreativeRequirement:
         response = self._response or {
@@ -195,6 +214,22 @@ class FakeTextModel:
                 ],
                 affected_shot_ids=["shot_03"],
             )
+
+        if self._revision_scenario == "second_pass" and previous_report is not None:
+            return StoryboardQualityReport(
+                is_passed=True,
+                summary=f"{len(storyboard)} 个镜头衔接清楚，可进入人工审核",
+                issues=[],
+                affected_shot_ids=[],
+            )
+
+        if self._quality_fault == "none" and self._revision_scenario in {
+            "second_pass",
+            "always_fail",
+            "repeat_version",
+        }:
+            self._quality_fault = "plot_gap"
+
         # FAKE_QUALITY_FAULT=plot_gap 时进入。
         # 返回合法但不通过的报告：第三镜情节断裂（plot_gap）。
         if self._quality_fault == "plot_gap":
@@ -270,3 +305,96 @@ class FakeTextModel:
             issues=[],
             affected_shot_ids=[],
         )
+
+    # 模型修订分镜
+    def revise_storyboard(
+        self,
+        requirement: CreativeRequirement,
+        outline: StoryOutline,
+        characters: list[CharacterProfile],
+        scenes: list[SceneProfile],
+        storyboard: list[StoryBoard],
+        report: StoryboardQualityReport,
+        revision_count: int = 0,
+    ) -> list[StoryBoard]:
+        """这里面模拟的是模拟去修订分镜的时候，修订成什么样子"""
+
+        # 模拟模型在修订分镜的时候，没要任何的修改
+        if self._revision_scenario == "unchanged":
+            return [shot.model_copy(deep=True) for shot in storyboard]
+
+        # 模拟模型在修订分镜的时候，又改回去了
+        if self._revision_scenario == "repeat_version" and revision_count >= 1:
+            return [_undo_fake_revision(shot) for shot in storyboard]
+
+        # 将原本的分镜拷贝一份
+        # 当成模型修订了分镜后的结果
+        revised = [shot.model_copy(deep=True) for shot in storyboard]
+
+        # 模拟前置故障 FAKE_STORYBOARD_FAULT=duplicate_id。
+        if len({shot.shot_id for shot in revised}) != len(revised):
+            # 你就得解决这个问题（因为你是在模拟有这个问题后，模拟修订方法把这个问题解决了）
+            # 按 order 重写成 shot_01、shot_02
+            revised = [
+                shot.model_copy(update={"shot_id": f"shot_{shot.order:02d}"})
+                for shot in revised
+            ]
+
+        # 模拟的是前置故障为 FAKE_STORYBOARD_FAULT=duration_mismatch
+        if (
+            sum(shot.duration_seconds for shot in revised)
+            != requirement.duration_seconds
+        ):
+            # 如果进入这个分支，说明当前的分镜存在时长对不上的情况（但是是之前我们自己模拟的）
+            # 你要做的事情：修订这种情况
+
+            # 算究竟差多少
+            remainder = requirement.duration_seconds - sum(
+                shot.duration_seconds for shot in revised[:-1]
+            )
+
+            revised[-1] = revised[-1].model_copy(update={"duration_seconds": remainder})
+
+        # 就是一个列表，列表里面是有问题的分镜 id
+        # ['shot_id1', 'shot_id2']
+        target_ids = report.affected_shot_ids or [revised[0].shot_id]
+
+        # 接下来要做的事情就是修订
+        for target_id in target_ids:
+            # 分镜id -> revised下标的映射
+            # 完整的5镜的映射，因为后面要用
+            # shot_01: 0
+            # shot_02: 1
+            # shot_03: 2
+            # shot_04: 3
+            # shot_05: 4
+            index_by_id = {shot.shot_id: index for index, shot in enumerate(revised)}
+
+            # 先判断这个 target_id 是否存在
+            if target_id not in index_by_id:
+                raise ValueError(f"Fake 修订目标不存在：{target_id}")
+
+            # 拿到下标
+            target_index = index_by_id[target_id]
+            # 根据下标拿到对应的分镜
+            target = revised[target_index]
+
+            if self._revision_scenario == "hard_regression":
+                # 说明这一次修订要把当前分镜修订为 hard_regression 这种情况
+                # 修订为“引用不存在的角色”
+                revised[target_index] = target.model_copy(
+                    update={"character_ids": ["char_missing"]}
+                )
+            else:
+                # 正常修订
+                revised[target_index] = target.model_copy(
+                    update={
+                        "action": f"{_ACTION_PREFIX}{target.action}",
+                        "character_ids": ["char_xiaolin", "char_amu"],
+                        "start_frame_prompt": f"{target.start_frame_prompt}{_FRAME_SUFFIX}",
+                        "end_frame_prompt": f"{target.end_frame_prompt}{_FRAME_SUFFIX}",
+                    }
+                )
+
+        # 这个revised就是模拟的模型修订分镜后的结果
+        return revised

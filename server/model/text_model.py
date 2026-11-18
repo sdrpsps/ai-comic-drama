@@ -55,3 +55,15 @@ class TextModel(Protocol):
     ) -> StoryboardQualityReport:
         """评价当前分镜，不修改分镜。"""
         ...
+
+    def revise_storyboard(
+        self,
+        requirement: CreativeRequirement,
+        outline: StoryOutline,
+        characters: list[CharacterProfile],
+        scenes: list[SceneProfile],
+        storyboard: list[StoryBoard],
+        report: StoryboardQualityReport,
+    ) -> list[StoryBoard]:
+        """返回完整新版本，节点负责最终校验。"""
+        ...

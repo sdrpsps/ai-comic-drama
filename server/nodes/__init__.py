@@ -1,4 +1,4 @@
-"""统一导出工作流使用的节点与路由函数。"""
+"""负责统一导出节点"""
 
 from .quality import (
     hard_rules_failed,
@@ -6,6 +6,14 @@ from .quality import (
     quality_failed,
     quality_passed,
     route_quality,
+)
+from .revision import (
+    initialize_revision,
+    make_revise_storyboard,
+    revision_exhausted,
+    revision_stalled,
+    route_after_failure,
+    route_after_revision,
 )
 from .story_planning import (
     finish_planning,
@@ -23,15 +31,21 @@ from .story_planning import (
 __all__ = [
     "finish_planning",
     "hard_rules_failed",
+    "initialize_revision",
     "make_analyze_requirement",
     "make_evaluate_storyboard_quality",
     "make_generate_characters",
     "make_generate_scenes",
     "make_generate_story_outline",
     "make_generate_storyboard",
+    "make_revise_storyboard",
     "quality_failed",
     "quality_passed",
     "receive_idea",
+    "revision_exhausted",
+    "revision_stalled",
+    "route_after_failure",
+    "route_after_revision",
     "route_quality",
     "storyboard_invalid",
     "storyboard_ready",

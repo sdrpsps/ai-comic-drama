@@ -4,6 +4,7 @@ from typing import Annotated, NotRequired, TypedDict
 from server.schema import (
     CharacterProfile,
     CreativeRequirement,
+    RevisionRecord,
     SceneProfile,
     StoryBoard,
     StoryboardQualityReport,
@@ -50,3 +51,15 @@ class ComicDramaState(TypedDict):
 
     # 修订前的质量报告，用于复评
     previous_quality_report: NotRequired[StoryboardQualityReport]
+
+    # 修订次数
+    revision_count: NotRequired[int]
+
+    # 最大修订次数
+    max_revisions: NotRequired[int]
+
+    # 修订历史
+    revision_history: NotRequired[list[RevisionRecord]]
+
+    # 停止修订原因
+    stop_reason: NotRequired[str | None]
