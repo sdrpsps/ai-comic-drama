@@ -7,12 +7,27 @@ from .shot_fingerprint import shot_fingerprint
 
 def make_revise_storyboard(text_model: TextModel):
     def revise_storyboard(state: ComicDramaState) -> dict[str, object]:
-        report = state["quality_report"]
+        report = state.get("quality_report")
 
         if report is None or report.is_passed or not report.issues:
             raise ValueError("没有可执行的质量问题，不能修订")
 
-        if state["revision_count"] >= state["max_revisions"]:
+        if (
+            "revision_count" not in state
+            or "max_revisions" not in state
+            or "storyboard" not in state
+            or "requirement" not in state
+            or "story_outline" not in state
+            or "characters" not in state
+            or "scenes" not in state
+            or "revision_history" not in state
+        ):
+            raise ValueError("缺少修订所需的分镜、设定或修订状态，不能自动修订")
+
+        if (
+            state.get("automatic_revision_count", state["revision_count"])
+            >= state["max_revisions"]
+        ):
             raise ValueError("修订次数已达上限")
 
         old_shots = state["storyboard"]
@@ -80,6 +95,11 @@ def make_revise_storyboard(text_model: TextModel):
             "previous_quality_report": report.model_dump(mode="json"),
             "storyboard_validation": None,
             "revision_count": next_version,
+            "automatic_revision_count": state.get(
+                "automatic_revision_count", state["revision_count"]
+            )
+            + 1,
+            "approved_version": None,
             "revision_history": [
                 *history,
                 RevisionRecord(

@@ -64,6 +64,7 @@ class TextModel(Protocol):
         scenes: list[SceneProfile],
         storyboard: list[StoryBoard],
         report: StoryboardQualityReport,
+        revision_count: int = 0,
     ) -> list[StoryBoard]:
         """返回完整新版本，节点负责最终校验。"""
         ...

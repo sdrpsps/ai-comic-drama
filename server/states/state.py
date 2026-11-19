@@ -8,6 +8,7 @@ from server.schema import (
     SceneProfile,
     StoryBoard,
     StoryboardQualityReport,
+    StoryboardReview,
     StoryboardValidation,
     StoryOutline,
 )
@@ -63,3 +64,18 @@ class ComicDramaState(TypedDict):
 
     # 停止修订原因
     stop_reason: NotRequired[str | None]
+
+    # 自动修订的次数
+    automatic_revision_count: NotRequired[int]
+
+    # 人工修订的次数
+    human_revision_count: NotRequired[int]
+
+    # 人工审核的决定
+    review_result: NotRequired[StoryboardReview | None]
+
+    # 人工审核的错误提示
+    review_error: NotRequired[str | None]
+
+    # 用户点击通过时的内容版本
+    approved_version: NotRequired[int | None]

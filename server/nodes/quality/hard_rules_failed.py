@@ -9,7 +9,7 @@ def hard_rules_failed(state: ComicDramaState) -> dict[str, object]:
     issues = []
     validation = state.get("storyboard_validation")
     if validation is None:
-        raise ValueError("storyboard_validation is required for hard rules failure")
+        raise ValueError("缺少分镜验证结果，不能记录硬规则失败")
 
     for error in validation.errors:
         match = re.search(r"\bshot_(?!id\b)[a-z0-9_]+\b", error)

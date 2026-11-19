@@ -5,6 +5,8 @@ from .shot_fingerprint import shot_fingerprint
 
 
 def initialize_revision(state: ComicDramaState) -> dict[str, object]:
+    if "storyboard" not in state:
+        raise ValueError("缺少分镜，不能初始化修订状态")
 
     limit = state.get("max_revisions", 2)
 
@@ -13,6 +15,11 @@ def initialize_revision(state: ComicDramaState) -> dict[str, object]:
 
     return {
         "max_revisions": limit,
+        "automatic_revision_count": 0,
+        "human_revision_count": 0,
+        "review_result": None,
+        "review_error": None,
+        "approved_version": None,
         "previous_quality_report": None,
         "revision_count": 0,
         "revision_history": [

@@ -7,7 +7,7 @@ def make_generate_story_outline(text_model: TextModel):
         requirement = state.get("requirement")
 
         if requirement is None:
-            raise ValueError("缺少 requirement，不能生成故事大纲")
+            raise ValueError("缺少需求，不能生成故事大纲")
 
         outline = text_model.generate_story_outline(requirement)
 
