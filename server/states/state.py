@@ -13,6 +13,8 @@ from server.schema import (
     StoryOutline,
 )
 
+from .asset_reducer import merge_assets
+
 
 class ComicDramaState(TypedDict):
     """整张图状态"""
@@ -79,3 +81,20 @@ class ComicDramaState(TypedDict):
 
     # 用户点击通过时的内容版本
     approved_version: NotRequired[int | None]
+
+    # 项目id号，项目的唯一标识
+    # 可以由用户传入，用户如果没有传入，我们来生成
+    project_id: NotRequired[str]
+
+    # 视觉快照，就是一个 VisualBible 转成的字典类型
+    visual_bible: NotRequired[dict]
+
+    # 视觉快照的指纹：做了一个hash计算取前面16位
+    visual_digest: NotRequired[str]
+
+    # 存储的是一个 Asset 转成的字典类型
+    # 这里我们自己指定了一个 reducer：merge_assets
+    assets: Annotated[dict[str, dict], merge_assets]
+
+    # 最终生图的一个报告：成功了几张、失败了几张
+    reference_report: NotRequired[dict]
