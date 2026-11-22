@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from base64 import b64decode
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
@@ -20,6 +21,7 @@ from server.storage import AssetStore
 
 from .image_generator import ImageGenerationError, prompt_digest
 
+logger = logging.getLogger(__name__)
 _MAX_IMAGE_BYTES = 20 * 1024 * 1024
 
 
@@ -63,23 +65,27 @@ class OpenAIImageGenerator:
                 response_format="url",
                 extra_body={
                     "watermark": False,
-                    "sequential_image_generation": "disabled",
                 },
                 timeout=self.timeout_seconds,
             )
         except AuthenticationError as exc:
+            self._log_provider_error("authentication_failed", request, exc)
             raise self._error("authentication_failed", request) from exc
         except PermissionDeniedError as exc:
+            self._log_provider_error("permission_denied", request, exc)
             raise self._error("permission_denied", request) from exc
         except RateLimitError as exc:
+            self._log_provider_error("rate_limited", request, exc)
             raise self._error("rate_limited", request) from exc
         except BadRequestError as exc:
+            self._log_provider_error("request_rejected", request, exc)
             raise self._error("request_rejected", request) from exc
         except APITimeoutError as exc:
             raise self._error("generation_timeout", request) from exc
         except APIConnectionError as exc:
             raise self._error("provider_unavailable", request) from exc
         except APIStatusError as exc:
+            self._log_provider_error("provider_error", request, exc)
             raise self._error("provider_error", request) from exc
 
         image = response.data[0] if response.data else None
@@ -141,6 +147,31 @@ class OpenAIImageGenerator:
             raise ImageGenerationError(
                 "download_failed", "生成图片下载失败", request_id=request.request_id
             ) from exc
+
+    def _log_provider_error(
+        self,
+        code: str,
+        request: ImageGenerationRequest,
+        exc: APIStatusError,
+    ) -> None:
+        body = exc.body if isinstance(exc.body, dict) else {}
+        error_info = body.get("error") if isinstance(body.get("error"), dict) else body
+        provider_code = error_info.get("code") if isinstance(error_info, dict) else None
+        provider_param = error_info.get("param") if isinstance(error_info, dict) else None
+        provider_message = (
+            error_info.get("message") if isinstance(error_info, dict) else None
+        )
+        logger.warning(
+            "Image generation failed: code=%s status=%s model=%s request_id=%s "
+            "provider_code=%s provider_param=%s provider_message=%s",
+            code,
+            exc.status_code,
+            self.model,
+            request.request_id,
+            provider_code,
+            provider_param,
+            provider_message,
+        )
 
     @staticmethod
     def _error(code: str, request: ImageGenerationRequest) -> ImageGenerationError:

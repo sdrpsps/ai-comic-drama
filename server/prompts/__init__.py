@@ -1,5 +1,10 @@
 from .character_prompt import CHARACTER_PROMPT
 from .quality_prompt import QUALITY_PROMPT
+from .reference_prompts import (
+    character_reference_request,
+    scene_reference_request,
+    visual_digest,
+)
 from .revision_prompt import REVISION_PROMPT
 from .scene_prompt import SCENE_PROMPT
 from .story_prompt import STORY_PROMPT
@@ -13,5 +18,8 @@ __all__ = [
     "SCENE_PROMPT",
     "STORYBOARD_PROMPT",
     "STORY_PROMPT",
-    "SYSTEM_PROMPT"
+    "SYSTEM_PROMPT",
+    "character_reference_request",
+    "scene_reference_request",
+    "visual_digest",
 ]

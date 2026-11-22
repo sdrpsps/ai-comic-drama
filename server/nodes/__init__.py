@@ -7,6 +7,11 @@ from .quality import (
     quality_passed,
     route_quality,
 )
+from .references import (
+    collect_reference_assets,
+    make_prepare_visual_bible,
+    make_reference_node,
+)
 from .review import (
     make_revise_from_review,
     review_storyboard,
@@ -35,6 +40,7 @@ from .story_planning import (
 )
 
 __all__ = [
+    "collect_reference_assets",
     "finish_planning",
     "hard_rules_failed",
     "initialize_revision",
@@ -44,6 +50,8 @@ __all__ = [
     "make_generate_scenes",
     "make_generate_story_outline",
     "make_generate_storyboard",
+    "make_prepare_visual_bible",
+    "make_reference_node",
     "make_revise_from_review",
     "make_revise_storyboard",
     "quality_failed",
