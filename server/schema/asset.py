@@ -3,6 +3,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .generated_image import GeneratedImage
+from .image_reference import ImageReference
 
 
 class Asset(BaseModel):
@@ -66,6 +67,8 @@ class Asset(BaseModel):
     size: str
     image: GeneratedImage | None = None
     error_code: str | None = None
+    reference_images: list[ImageReference] = Field(default_factory=list)
+
 
     # Asset 创建之后，会自动进行校验
     # Asset(...)、Asset.model_validate(...) 和 Asset.model_validate_json(...) 都会触发它。
@@ -82,6 +85,7 @@ class Asset(BaseModel):
                 self.image.prompt,
                 self.image.negative_prompt,
                 self.image.size,
+                self.image.reference_images
             ) != (
                 self.request_id,
                 self.purpose,
@@ -90,6 +94,7 @@ class Asset(BaseModel):
                 self.prompt,
                 self.negative_prompt,
                 self.size,
+                self.reference_images
             ):
                 raise ValueError("成功图片必须与素材请求完全对应")
         elif self.image is not None or not self.error_code:

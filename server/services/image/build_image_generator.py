@@ -38,11 +38,15 @@ def build_image_generator_from_env() -> ImageGenerator:
     store = AssetStore(project_root=config.project_root)
     if config.provider == "fake":
         owners = os.getenv("FAKE_IMAGE_FAIL_OWNER_IDS", "").strip()
+        purposes = os.getenv("FAKE_IMAGE_FAIL_PURPOSES", "").strip()
         return FakeImageGenerator(
             store,
             failure=os.getenv("FAKE_IMAGE_FAILURE", "none").strip().lower(),
             fail_owner_ids=frozenset(x.strip() for x in owners.split(",") if x.strip())
             if owners
+            else None,
+            fail_purposes=frozenset(x.strip() for x in purposes.split(",") if x.strip())
+            if purposes
             else None,
         )
     if config.provider != "openai":

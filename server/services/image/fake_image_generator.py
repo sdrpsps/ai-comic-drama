@@ -19,14 +19,19 @@ class FakeImageGenerator:
         *,
         failure: str = "none",
         fail_owner_ids: frozenset[str] | None = None,
+        fail_purposes: frozenset[str] | None = None,
     ) -> None:
         self.store = store
         self.failure = failure
         # None 表示所有对象；指定集合则只让这些 owner 失败。
         self.fail_owner_ids = fail_owner_ids
         self.generation_calls = 0
+        self.fail_purposes = fail_purposes
 
     def generate(self, request: ImageGenerationRequest) -> GeneratedImage:
+        for reference in request.reference_images:
+            self.store.read_reference(reference)
+
         existing = self.store.load(request)
         if existing is not None:
             if existing.provider_model != "fake-image-v1":
@@ -35,8 +40,10 @@ class FakeImageGenerator:
 
         # 只有真正需要生成时才计数，用它证明幂等命中跳过了第二次调用。
         self.generation_calls += 1
-        if self.failure != "none" and (
-            self.fail_owner_ids is None or request.owner_id in self.fail_owner_ids
+        if (
+            self.failure != "none"
+            and (self.fail_owner_ids is None or request.owner_id in self.fail_owner_ids)
+            and (self.fail_purposes is None or request.purpose in self.fail_purposes)
         ):
             messages = {
                 "rate_limit": ("rate_limited", "Fake 图像服务限流"),

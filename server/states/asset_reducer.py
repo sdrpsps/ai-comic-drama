@@ -23,6 +23,7 @@ def merge_assets(current: dict, update: dict) -> dict:
                 "prompt",
                 "negative_prompt",
                 "size",
+                "reference_images",
             )
             if any(
                 getattr(previous, name) != getattr(asset, name) for name in identity

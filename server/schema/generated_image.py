@@ -2,10 +2,12 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from .image_reference import ImageReference
+
 
 class GeneratedImage(BaseModel):
     """已规范化的素材结果；State 不需要理解平台原始响应。
-    
+
     示例::
 
     {
@@ -26,8 +28,8 @@ class GeneratedImage(BaseModel):
         "request_digest": "0123456789abcdef",
         "reused": false
     }
-    
-    
+
+
     """
 
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
@@ -69,3 +71,4 @@ class GeneratedImage(BaseModel):
 
     # 是否是复用的
     reused: bool = False
+    reference_images: list[ImageReference] = Field(default_factory=list)

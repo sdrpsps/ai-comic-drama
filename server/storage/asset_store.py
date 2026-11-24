@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
-from server.schema import GeneratedImage, ImageGenerationRequest
+from server.schema import GeneratedImage, ImageGenerationRequest, ImageReference
 
 
 class AssetStore:
@@ -138,6 +138,7 @@ class AssetStore:
             size=request.size,
             prompt_digest=prompt_digest,
             request_digest=self._request_digest(request),
+            reference_images=request.reference_images,
         )
 
         # 写入json
@@ -147,6 +148,30 @@ class AssetStore:
         )
 
         return result
+
+    def reference_from_image(self, image: GeneratedImage) -> ImageReference:
+        path = (self.project_root / image.local_path).resolve()
+        content = self._read_reference_file(path)
+        return ImageReference(
+            local_path=path.relative_to(self.project_root).as_posix(),
+            content_sha256=hashlib.sha256(content).hexdigest(),
+        )
+
+    def read_reference(self, reference: ImageReference) -> bytes:
+        path = (self.project_root / reference.local_path).resolve()
+        content = self._read_reference_file(path)
+        if hashlib.sha256(content).hexdigest() != reference.content_sha256:
+            raise ValueError("参考图内容已变化，不能继续使用冻结任务")
+        return content
+
+    def _read_reference_file(self, path: Path) -> bytes:
+        if not path.is_relative_to(self.output_root):
+            raise ValueError("参考图必须位于当前项目 outputs 中")
+        with path.open("rb") as file:
+            content = file.read(20 * 1024 * 1024 + 1)
+        if len(content) > 20 * 1024 * 1024 or not self._looks_like_image(content):
+            raise ValueError("参考图过大或格式无效")
+        return content
 
     @staticmethod
     def _looks_like_image(content: bytes) -> bool:

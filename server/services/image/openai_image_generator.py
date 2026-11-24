@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import logging
 from base64 import b64decode
 from urllib.parse import urlparse
@@ -45,9 +46,14 @@ class OpenAIImageGenerator:
         self.store = store
         self.model = model
         self.timeout_seconds = timeout_seconds
-        self.client = client or OpenAI(api_key=api_key, base_url=base_url, max_retries=0)
+        self.client = client or OpenAI(
+            api_key=api_key, base_url=base_url, max_retries=0
+        )
 
     def generate(self, request: ImageGenerationRequest) -> GeneratedImage:
+        for reference in request.reference_images:
+            self.store.read_reference(reference)
+
         existing = self.store.load(request)
         if existing is not None:
             if existing.provider_model != self.model:
@@ -58,14 +64,25 @@ class OpenAIImageGenerator:
             provider_prompt = request.prompt
             if request.negative_prompt:
                 provider_prompt += f"\n请避免：{request.negative_prompt}"
+            # 在 SDK 边界临时编码参考图，云端不能读取本地文件路径。
+            image_inputs = []
+            for reference in request.reference_images:
+                content = self.store.read_reference(reference)
+                suffix = self.store._detect_suffix(content)
+                mime = {
+                    ".png": "image/png",
+                    ".jpg": "image/jpeg",
+                    ".webp": "image/webp",
+                }[suffix]
+                encoded = base64.b64encode(content).decode("ascii")
+                image_inputs.append(f"data:{mime};base64,{encoded}")
+            extra = {"image": image_inputs} if image_inputs else {}
             response = self.client.images.generate(
                 model=self.model,
                 prompt=provider_prompt,
                 size=request.size,
                 response_format="url",
-                extra_body={
-                    "watermark": False,
-                },
+                extra_body={"watermark": False, **extra},
                 timeout=self.timeout_seconds,
             )
         except AuthenticationError as exc:
@@ -157,7 +174,9 @@ class OpenAIImageGenerator:
         body = exc.body if isinstance(exc.body, dict) else {}
         error_info = body.get("error") if isinstance(body.get("error"), dict) else body
         provider_code = error_info.get("code") if isinstance(error_info, dict) else None
-        provider_param = error_info.get("param") if isinstance(error_info, dict) else None
+        provider_param = (
+            error_info.get("param") if isinstance(error_info, dict) else None
+        )
         provider_message = (
             error_info.get("message") if isinstance(error_info, dict) else None
         )

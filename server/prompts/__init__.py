@@ -1,4 +1,5 @@
 from .character_prompt import CHARACTER_PROMPT
+from .frame_prompts import frame_request
 from .quality_prompt import QUALITY_PROMPT
 from .reference_prompts import (
     character_reference_request,
@@ -20,6 +21,7 @@ __all__ = [
     "STORY_PROMPT",
     "SYSTEM_PROMPT",
     "character_reference_request",
+    "frame_request",
     "scene_reference_request",
-    "visual_digest",
+    "visual_digest"
 ]
